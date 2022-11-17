@@ -5,6 +5,9 @@
 
 import NextAuth from "next-auth";
 import GithubProvider from "next-auth/providers/github";
+import { fauna } from "../../../services/fauna";
+import { query } from "faunadb";
+
 export const authOptions = {
 	// Configure one or more authentication providers
 	providers: [
@@ -15,5 +18,49 @@ export const authOptions = {
 		}),
 		// ...add more providers here
 	],
+	callbacks: {
+		async signIn({ user, account, profile }) {
+			const { email, name, following } = user;
+			console.log('email, name, following', email, name, following);
+
+			try {
+				await fauna.query(
+					query.If(
+						query.Not(
+							query.Exists(
+								query.Match(
+									query.Index('user_by_email'),
+									query.Casefold(email)
+								)
+							)
+						),
+						query.Create(
+							query.Collection('users'),
+							{
+								data: {
+									email: email,
+									name: name,
+									following: following,
+								}
+							}
+						),
+						query.Get(
+							query.Match(
+								query.Index('user_by_email'),
+								query.Casefold(email)
+							)
+						)
+					)
+
+				)
+
+				return true
+			} catch {
+				console.error('Error creating user');
+
+				return false
+			}
+		},
+	}
 };
 export default NextAuth(authOptions);
